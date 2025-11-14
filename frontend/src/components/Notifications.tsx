@@ -1,0 +1,245 @@
+import axios from 'axios';
+import type { SwapRequest } from '../types';
+import { useToast } from './ui/toast';
+
+interface NotificationsProps {
+    incomingRequests: SwapRequest[];
+    outgoingRequests: SwapRequest[];
+    loading: boolean;
+    onRefresh: () => void;
+}
+
+export default function Notifications({ incomingRequests, outgoingRequests, loading, onRefresh }: NotificationsProps) {
+    const formatDateTime = (dateStr: string) => {
+        const date = new Date(dateStr);
+        return date.toLocaleString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    };
+
+    const { toast } = useToast();
+
+    const handleSwapResponse = async (requestId: number, accept: boolean) => {
+        try {
+            const token = localStorage.getItem('token');
+            const responseStr = accept ? 'ACCEPT' : 'REJECT';
+            const res = await axios.post(
+                `${import.meta.env.VITE_SERVER_URI}/api/v1/swap/swap-response`,
+                { swapRequestId: requestId, response: responseStr },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            // Use server-provided message when available, otherwise fall back to a default
+            const serverMessage = res?.data?.message ?? (accept ? 'Swap request accepted.' : 'Swap request rejected.');
+
+            toast({
+                title: accept ? 'Swap Accepted' : 'Swap Rejected',
+                description: serverMessage,
+                variant: accept ? 'default' : 'destructive',
+            });
+
+            onRefresh();
+        } catch (error) {
+            console.error('Error responding to swap:', error);
+            toast({
+                title: "Error",
+                description: "Failed to respond to swap request. Please try again.",
+                variant: "destructive"
+            });
+        }
+    };
+    return (
+        <>
+            {/* Header */}
+            <div className="mb-6">
+                <h2 className="text-2xl font-normal text-gray-800">Notifications</h2>
+            </div>
+
+            {loading ? (
+                <div className="flex items-center justify-center h-64">
+                    <svg className="animate-spin h-8 w-8 text-[#1a73e8]" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+            ) : (
+                <div className="space-y-8">
+                    {/* Incoming Requests */}
+                    <div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Incoming Requests</h3>
+                        <div className="space-y-4">
+                            {incomingRequests.length === 0 ? (
+                                <div className="text-center py-8 bg-white border border-gray-200 rounded-lg">
+                                    <p className="text-gray-500">No incoming swap requests.</p>
+                                </div>
+                            ) : (
+                                incomingRequests.map((request) => {
+                                    const requesterName = request.requester?.name ?? 'Unknown user';
+                                    const requesterSlotTitle = request.requesterSlot?.title ?? 'Untitled slot';
+                                    const responderSlotTitle = request.responderSlot?.title ?? 'Untitled slot';
+                                    const requesterSlotStart = request.requesterSlot?.startTime ?? '';
+                                    const requesterSlotEnd = request.requesterSlot?.endTime ?? '';
+                                    const responderSlotStart = request.responderSlot?.startTime ?? '';
+                                    const responderSlotEnd = request.responderSlot?.endTime ?? '';
+
+                                    return (
+                                        <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6">
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div>
+                                                    <p className="text-sm text-gray-600 mb-1">
+                                                        <span className="font-medium text-gray-900">{requesterName}</span> wants to swap slots
+                                                    </p>
+                                                    <p className="text-xs text-gray-500">{new Date(request.createdAt).toLocaleString()}</p>
+                                                </div>
+                                                <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                    {request.status}
+                                                </span>
+                                            </div>
+                                            <div className="grid md:grid-cols-2 gap-4 mb-4">
+                                                <div className="border border-gray-200 rounded p-3">
+                                                    <p className="text-xs text-gray-500 mb-1">They offer:</p>
+                                                    <p className="font-medium text-gray-900">{requesterSlotTitle}</p>
+                                                    <div className="space-y-1 mt-2">
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>Start: {requesterSlotStart ? formatDateTime(requesterSlotStart) : '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>End: {requesterSlotEnd ? formatDateTime(requesterSlotEnd) : '—'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="border border-gray-200 rounded p-3">
+                                                    <p className="text-xs text-gray-500 mb-1">For your:</p>
+                                                    <p className="font-medium text-gray-900">{responderSlotTitle}</p>
+                                                    <div className="space-y-1 mt-2">
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>Start: {responderSlotStart ? formatDateTime(responderSlotStart) : '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>End: {responderSlotEnd ? formatDateTime(responderSlotEnd) : '—'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {request.status === 'PENDING' && (
+                                                <div className="flex space-x-3">
+                                                    <button
+                                                        onClick={() => handleSwapResponse(request.id, true)}
+                                                        className="flex-1 px-4 py-2 bg-[#1a73e8] text-white rounded-lg hover:bg-[#1557b0] transition-colors text-sm font-medium cursor-pointer"
+                                                    >
+                                                        Accept
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleSwapResponse(request.id, false)}
+                                                        className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Outgoing Requests */}
+                    <div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Outgoing Requests</h3>
+                        <div className="space-y-4">
+                            {outgoingRequests.length === 0 ? (
+                                <div className="text-center py-8 bg-white border border-gray-200 rounded-lg">
+                                    <p className="text-gray-500">No outgoing swap requests.</p>
+                                </div>
+                            ) : (
+                                outgoingRequests.map((request) => {
+                                    const responderName = request.responder?.name ?? 'Unknown user';
+                                    const requesterSlotTitle = request.requesterSlot?.title ?? 'Untitled slot';
+                                    const responderSlotTitle = request.responderSlot?.title ?? 'Untitled slot';
+                                    const requesterSlotStart = request.requesterSlot?.startTime ?? '';
+                                    const requesterSlotEnd = request.requesterSlot?.endTime ?? '';
+                                    const responderSlotStart = request.responderSlot?.startTime ?? '';
+                                    const responderSlotEnd = request.responderSlot?.endTime ?? '';
+
+                                    return (
+                                        <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6">
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div>
+                                                    <p className="text-sm text-gray-600 mb-1">
+                                                        Swap request to <span className="font-medium text-gray-900">{responderName}</span>
+                                                    </p>
+                                                    <p className="text-xs text-gray-500">{new Date(request.createdAt).toLocaleString()}</p>
+                                                </div>
+                                                <span className={`px-2 py-1 rounded text-xs font-medium ${request.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                                                    request.status === 'ACCEPTED' ? 'bg-green-100 text-green-800' :
+                                                        'bg-red-100 text-red-800'
+                                                    }`}>
+                                                    {request.status}
+                                                </span>
+                                            </div>
+                                            <div className="grid md:grid-cols-2 gap-4">
+                                                <div className="border border-gray-200 rounded p-3">
+                                                    <p className="text-xs text-gray-500 mb-1">You offered:</p>
+                                                    <p className="font-medium text-gray-900">{requesterSlotTitle}</p>
+                                                    <div className="space-y-1 mt-2">
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>Start: {requesterSlotStart ? formatDateTime(requesterSlotStart) : '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>End: {requesterSlotEnd ? formatDateTime(requesterSlotEnd) : '—'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="border border-gray-200 rounded p-3">
+                                                    <p className="text-xs text-gray-500 mb-1">For their:</p>
+                                                    <p className="font-medium text-gray-900">{responderSlotTitle}</p>
+                                                    <div className="space-y-1 mt-2">
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>Start: {responderSlotStart ? formatDateTime(responderSlotStart) : '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span>End: {responderSlotEnd ? formatDateTime(responderSlotEnd) : '—'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+}
